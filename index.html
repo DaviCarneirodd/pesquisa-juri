@@ -91,9 +91,19 @@
       G3: "https://pt.surveymonkey.com/r/HCSLV3R"
     };
 
+    let jaDisparou = false;
     let redirecionou = false;
 
-    // Redireciona EXCLUSIVAMENTE para o grupo que a planilha gravou!
+    // Gera ou recupera o ID único desta aba/sessão para garantir 1 usuário = 1 linha
+    function obterUidUnicoDaAba() {
+      let uid = sessionStorage.getItem("UID_JURI_ACESSO");
+      if (!uid) {
+        uid = "U_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
+        sessionStorage.setItem("UID_JURI_ACESSO", uid);
+      }
+      return uid;
+    }
+
     window.receberGrupoDaPlanilha = function(data) {
       if (redirecionou) return;
       redirecionou = true;
@@ -105,13 +115,31 @@
       }
     };
 
-    function iniciarConexaoSincronizada() {
+    function iniciarAcessoUnico() {
+      // Impede que o pré-carregamento invisível do navegador crie linhas fantasmas
+      if (document.visibilityState === "hidden" || document.visibilityState === "prerender") {
+        document.addEventListener("visibilitychange", function aoFicarVisivel() {
+          if (document.visibilityState === "visible") {
+            document.removeEventListener("visibilitychange", aoFicarVisivel);
+            dispararScriptUnico();
+          }
+        });
+        return;
+      }
+      dispararScriptUnico();
+    }
+
+    function dispararScriptUnico() {
+      if (jaDisparou) return;
+      jaDisparou = true;
+
+      const uid = obterUidUnicoDaAba();
       const script = document.createElement("script");
-      script.src = `${APPS_SCRIPT_URL}?action=entrar&callback=receberGrupoDaPlanilha&t=${Date.now()}`;
+      script.src = `${APPS_SCRIPT_URL}?action=entrar&uid=${encodeURIComponent(uid)}&callback=receberGrupoDaPlanilha`;
       document.body.appendChild(script);
     }
 
-    window.addEventListener("DOMContentLoaded", iniciarConexaoSincronizada);
+    window.addEventListener("DOMContentLoaded", iniciarAcessoUnico);
   </script>
 
 </body>
