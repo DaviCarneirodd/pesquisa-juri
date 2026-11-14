@@ -94,14 +94,35 @@
     let jaDisparou = false;
     let redirecionou = false;
 
-    // Gera ou recupera o ID único desta aba/sessão para garantir 1 usuário = 1 linha
-    function obterUidUnicoDaAba() {
-      let uid = sessionStorage.getItem("UID_JURI_ACESSO");
-      if (!uid) {
-        uid = "U_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
-        sessionStorage.setItem("UID_JURI_ACESSO", uid);
+    // 1. Detecta se quem abriu o link é um robô de pré-visualização (WhatsApp, Telegram, Facebook, etc.)
+    function ehRoboDePreVisualizacao() {
+      const ua = (navigator.userAgent || "").toLowerCase();
+      const padraoBots = /bot|crawler|spider|crawling|whatsapp|telegram|facebookexternalhit|facebot|twitterbot|linkedinbot|slackbot|discordbot|pinterest|preview|headless/i;
+      if (padraoBots.test(ua)) return true;
+      if (navigator.webdriver) return true;
+      if (window.outerWidth === 0 && window.outerHeight === 0) return true;
+      return false;
+    }
+
+    // 2. Gera um UID único por dispositivo; se o MESMO dispositivo recarregar em menos de 15 segundos,
+    // mantém o mesmo UID para evitar linha duplicada. Após 15s, permite novo teste!
+    function obterUidDoDispositivo() {
+      try {
+        const agora = Date.now();
+        const salvoUid = localStorage.getItem("UID_JURI_ATUAL");
+        const salvoTs = Number(localStorage.getItem("TS_JURI_ATUAL") || "0");
+
+        if (salvoUid && (agora - salvoTs) < 15000) {
+          return salvoUid;
+        }
+
+        const novoUid = "DEV_" + agora + "_" + Math.random().toString(36).substring(2, 9);
+        localStorage.setItem("UID_JURI_ATUAL", novoUid);
+        localStorage.setItem("TS_JURI_ATUAL", String(agora));
+        return novoUid;
+      } catch (e) {
+        return "DEV_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9);
       }
-      return uid;
     }
 
     window.receberGrupoDaPlanilha = function(data) {
@@ -115,31 +136,36 @@
       }
     };
 
-    function iniciarAcessoUnico() {
-      // Impede que o pré-carregamento invisível do navegador crie linhas fantasmas
+    function iniciarAcessoHumano() {
+      // Se for robô de link preview, aborta imediatamente sem chamar a planilha!
+      if (ehRoboDePreVisualizacao()) return;
+
+      // Só dispara quando a aba estiver realmente visível na tela do usuário
       if (document.visibilityState === "hidden" || document.visibilityState === "prerender") {
-        document.addEventListener("visibilitychange", function aoFicarVisivel() {
+        document.addEventListener("visibilitychange", function quandoVisivel() {
           if (document.visibilityState === "visible") {
-            document.removeEventListener("visibilitychange", aoFicarVisivel);
-            dispararScriptUnico();
+            document.removeEventListener("visibilitychange", quandoVisivel);
+            dispararParaPlanilha();
           }
         });
         return;
       }
-      dispararScriptUnico();
+
+      // Pequeno atraso de 150ms para garantir que não é um pré-carregamento abortado do navegador
+      setTimeout(dispararParaPlanilha, 150);
     }
 
-    function dispararScriptUnico() {
-      if (jaDisparou) return;
+    function dispararParaPlanilha() {
+      if (jaDisparou || document.visibilityState === "hidden") return;
       jaDisparou = true;
 
-      const uid = obterUidUnicoDaAba();
+      const uid = obterUidDoDispositivo();
       const script = document.createElement("script");
       script.src = `${APPS_SCRIPT_URL}?action=entrar&uid=${encodeURIComponent(uid)}&callback=receberGrupoDaPlanilha`;
       document.body.appendChild(script);
     }
 
-    window.addEventListener("DOMContentLoaded", iniciarAcessoUnico);
+    window.addEventListener("DOMContentLoaded", iniciarAcessoHumano);
   </script>
 
 </body>
